@@ -1,0 +1,5 @@
+{
+  "name": "Smart Medicine Reminder",
+  "description": "A web application for caretakers to schedule medicine reminders for patients. Patients receive on-screen alarms with custom media and can log when they've taken their medication. Includes weekly tracking reports.",
+  "requestFramePermissions": []
+}
