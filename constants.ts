@@ -1,3 +1,4 @@
+
 import { Medicine, Log } from './types';
 
 export const DAYS_OF_WEEK: string[] = [
@@ -29,7 +30,7 @@ export const translations = {
   beforeFood: 'Before Food',
   afterFood: 'After Food',
   reminderTitle: "It's time for your medicine!",
-  takenButton: 'I have taken it',
+  takenButton: 'I have taken medicine',
   missedDoseWarning: 'If not taken in 10 minutes, the caretaker will be notified.',
   dosesTaken: 'Doses Taken',
   dosesMissed: 'Doses Missed',
@@ -66,7 +67,7 @@ export const translations = {
   loginChoiceTitle: 'Who are you?',
   caretakerLoginTitle: 'Caretaker Login',
   patientLoginTitle: 'Patient Login',
-  patientLoginPrompt: 'Enter your registered phone number.',
+  patientLoginPrompt: 'Scanning for registered face...',
   noAccountError: 'No account found. Please Register first.',
   incorrectPhoneError: 'Incorrect Patient Phone Number.',
 
@@ -77,4 +78,13 @@ export const translations = {
   pwdReqNumber: 'At least one number',
   pwdReqSpecial: 'At least one special character (!@#$...)',
   passwordInvalidError: 'Password does not meet requirements.',
+
+  // Face ID
+  cameraPermissionError: 'Camera permission denied. Please allow camera access or upload a photo.',
+  captureFace: 'Capture Patient Face',
+  retakePhoto: 'Retake Photo',
+  uploadPhoto: 'Upload Photo Instead',
+  scanningFace: 'Scanning...',
+  faceVerified: 'Face Verified!',
+  faceNotRecognized: 'Face not recognized. Please try again.',
 };

@@ -41,4 +41,5 @@ export interface RegisteredUser {
   caretakerPhone: string; // Acts as the Unique ID (Primary Key)
   patientPhone: string;
   password: string;
+  faceImage: string; // Base64 string of the patient's face
 }

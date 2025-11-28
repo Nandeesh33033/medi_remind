@@ -6,7 +6,6 @@ import CaretakerView from './components/CaretakerView';
 import PatientView from './components/PatientView';
 import ReminderModal from './components/ReminderModal';
 import Header from './components/Header';
-// Import new auth components
 import LandingScreen from './components/LandingScreen';
 import RegisterScreen from './components/RegisterScreen';
 import LoginChoiceScreen from './components/LoginChoiceScreen';
@@ -14,7 +13,6 @@ import CaretakerLoginScreen from './components/CaretakerLoginScreen';
 import PatientLoginScreen from './components/PatientLoginScreen';
 
 // --- CONFIGURATION ---
-// API Key for Fast2SMS
 const FAST2SMS_API_KEY = 'tJE8T3LG0yQIRDdNgFaKloxeZ9rXqsmiO5bMcY7Sj4hHpCvA2zHLnNZyDTIuS7c1Y4MgJklifRd3ebB9';
 
 const App: React.FC = () => {
@@ -23,16 +21,23 @@ const App: React.FC = () => {
   // 1. ALL USERS (Database Simulation)
   const [allUsers, setAllUsers] = useState<RegisteredUser[]>(() => {
     const saved = localStorage.getItem('allUsers');
-    return saved ? JSON.parse(saved) : [];
+    if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.length > 0 && !parsed[0].faceImage) {
+            return [];
+        }
+        return parsed;
+    }
+    return [];
   });
 
-  // 2. ACTIVE SESSION (Currently Logged in User)
+  // 2. ACTIVE SESSION
   const [currentUser, setCurrentUser] = useState<RegisteredUser | null>(() => {
     const saved = localStorage.getItem('currentUser');
     return saved ? JSON.parse(saved) : null;
   });
 
-  // 3. ALL MEDICINES (Filtered by view, stored globally)
+  // 3. ALL MEDICINES
   const [allMedicines, setAllMedicines] = useState<Medicine[]>(() => {
     const saved = localStorage.getItem('medicines');
     return saved ? JSON.parse(saved) : initialMedicines;
@@ -51,9 +56,13 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>(View.Landing);
   const [activeReminder, setActiveReminder] = useState<Medicine | null>(null);
   
-  // Auth State (derived from currentUser)
   const isLoggedIn = !!currentUser;
-  const [lastSmsTime, setLastSmsTime] = useState<number>(0);
+  
+  // Persist SMS timestamps to avoid duplicate sending on refresh
+  const [lastSmsTime, setLastSmsTime] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('lastSmsTime');
+    return saved ? JSON.parse(saved) : {};
+  });
 
   // --- PERSISTENCE EFFECTS ---
   useEffect(() => {
@@ -76,8 +85,11 @@ const App: React.FC = () => {
     localStorage.setItem('logs', JSON.stringify(allLogs));
   }, [allLogs]);
 
-  // --- DERIVED STATE (DATA FOR CURRENT USER) ---
-  // We only show medicines/logs belonging to the currently logged-in caretaker ID
+  useEffect(() => {
+    localStorage.setItem('lastSmsTime', JSON.stringify(lastSmsTime));
+  }, [lastSmsTime]);
+
+  // --- DERIVED STATE ---
   const userMedicines = currentUser 
     ? allMedicines.filter(m => m.caretakerId === currentUser.caretakerPhone)
     : [];
@@ -85,39 +97,6 @@ const App: React.FC = () => {
   const userLogs = currentUser
     ? allLogs.filter(l => l.caretakerId === currentUser.caretakerPhone)
     : [];
-
-
-  // --- DEEP LINK HANDLING (SMS LINK CLICK) ---
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const takeMedId = params.get('take_med_id');
-    const action = params.get('action');
-
-    if (takeMedId && allMedicines.length > 0) {
-      const medToTake = allMedicines.find(m => m.id === takeMedId);
-      
-      if (medToTake) {
-        console.log("Deep link detected for medicine:", medToTake.name);
-        
-        // If not logged in, we need to temporarily find the user associated with this medicine
-        // to enable functionality, or just allow the specific medicine action.
-        // For security, we usually require login, but for "Quick Take" links we can allow it
-        // strictly for the logging action.
-        
-        if (action === 'taken') {
-            addLog(medToTake.id, 'taken', medToTake.caretakerId); // Pass caretakerId explicitly
-            alert(`Success! ${medToTake.name} marked as taken.`);
-        } else {
-            setActiveReminder(medToTake);
-        }
-        
-        // Clean URL
-        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-        window.history.replaceState({path: newUrl}, '', newUrl);
-      }
-    }
-  }, [allMedicines]);
-
 
   const addMedicine = (med: Omit<Medicine, 'id' | 'caretakerId'>) => {
     if (!currentUser) return;
@@ -130,7 +109,6 @@ const App: React.FC = () => {
   };
 
   const addLog = (medicineId: string, status: 'taken' | 'missed', ownerId?: string) => {
-    // If ownerId is passed (from deep link), use it. Otherwise use current user.
     const cid = ownerId || currentUser?.caretakerPhone;
     if (!cid) return;
 
@@ -145,7 +123,6 @@ const App: React.FC = () => {
     setActiveReminder(null);
   };
   
-  // Helper to send SMS via Fast2SMS API
   const sendSmsViaApi = async (phone: string, message: string): Promise<{ success: boolean; error?: string }> => {
     if (!phone || !FAST2SMS_API_KEY) return { success: false, error: 'Missing Phone or API Key' };
 
@@ -174,9 +151,6 @@ const App: React.FC = () => {
 
   const handleReminderTimeout = async () => {
     if (activeReminder) {
-      console.log(`Missed dose for ${activeReminder.name}. Notifying caretaker.`);
-      
-      // Find the user who owns this medicine
       const medicineOwner = allUsers.find(u => u.caretakerPhone === activeReminder.caretakerId);
       const cPhone = medicineOwner?.caretakerPhone;
 
@@ -187,15 +161,13 @@ const App: React.FC = () => {
         
         await sendSmsViaApi(cPhone, messageContent);
       }
-
       addLog(activeReminder.id, 'missed', activeReminder.caretakerId);
     }
   };
 
   // --- AUTHENTICATION HANDLERS ---
 
-  const handleRegister = (cPhone: string, pPhone: string, password: string) => {
-    // Check if user already exists
+  const handleRegister = (cPhone: string, pPhone: string, password: string, faceImage: string) => {
     if (allUsers.some(u => u.caretakerPhone === cPhone)) {
         alert("An account with this Caretaker Phone Number already exists.");
         return;
@@ -205,6 +177,7 @@ const App: React.FC = () => {
       caretakerPhone: cPhone,
       patientPhone: pPhone,
       password: password,
+      faceImage: faceImage,
     };
 
     setAllUsers(prev => [...prev, newUser]);
@@ -214,12 +187,10 @@ const App: React.FC = () => {
 
   const handleCaretakerLogin = (phone: string, password: string) => {
     const user = allUsers.find(u => u.caretakerPhone === phone);
-
     if (!user) {
         alert("No account found with this Caretaker Phone Number.");
         return;
     }
-
     if (password === user.password) {
         setCurrentUser(user);
         setCurrentView(View.Caretaker);
@@ -228,16 +199,13 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePatientLogin = (enteredPhone: string) => {
-     // Search for any user where the patient phone matches
-     const user = allUsers.find(u => u.patientPhone === enteredPhone);
-
+  const handlePatientLogin = (matchedUserPhone: string) => {
+     // Because Face ID simulation matched a user, we get their phone number and log them in
+     const user = allUsers.find(u => u.patientPhone === matchedUserPhone);
      if (!user) {
-        alert("No account found linked to this Patient Phone Number.");
+        alert("Authentication Error: User not found.");
         return;
     }
-
-    // Login successful
     setCurrentUser(user);
     setCurrentView(View.Patient);
   };
@@ -247,16 +215,7 @@ const App: React.FC = () => {
     setCurrentView(View.Landing);
   };
 
-  const openNativeSms = (phone: string, message: string) => {
-      const ua = navigator.userAgent.toLowerCase();
-      const isiOS = ua.includes('iphone') || ua.includes('ipad');
-      const separator = isiOS ? '&' : '?';
-      const smsLink = `sms:${phone}${separator}body=${encodeURIComponent(message)}`;
-      window.location.href = smsLink;
-  };
-
   const sendReminderSMS = async (medicine: Medicine, manualTrigger: boolean = false) => {
-    // Find owner of medicine to get patient phone
     const owner = allUsers.find(u => u.caretakerPhone === medicine.caretakerId);
     const targetPhone = owner?.patientPhone;
 
@@ -266,76 +225,54 @@ const App: React.FC = () => {
     }
     
     const now = Date.now();
-    if (!manualTrigger && now - lastSmsTime < 120000) {
+    // Throttle SMS: Do not send if sent in the last 2 minutes for this medicine
+    if (!manualTrigger && lastSmsTime[medicine.id] && now - lastSmsTime[medicine.id] < 120000) {
       return;
     }
-    setLastSmsTime(now);
-
+    
+    setLastSmsTime(prev => ({ ...prev, [medicine.id]: now }));
     const foodInstruction = medicine.beforeFood ? 'BEFORE' : 'AFTER';
-    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const messageContent = `MediRemind:\nTake ${medicine.pills} pill(s) of\n${medicine.name} (${medicine.dosage}mg)\n${foodInstruction} food.\nTime: ${medicine.schedule.time}.`;
     
-    const appUrl = `${window.location.origin}${window.location.pathname}`;
-    const actionLink = `${appUrl}?take_med_id=${medicine.id}&action=taken`;
-
-    const messageContent = `Take ${medicine.pills} ${medicine.name}. ${foodInstruction} food. Click to confirm: ${actionLink} [${timestamp}]`;
-    
-    const result = await sendSmsViaApi(targetPhone, messageContent);
-
-    if (result.success) {
-      if (manualTrigger) alert(`SMS sent successfully!`);
-    } else {
-      const errorMsg = result.error || "Unknown Error";
-      let reason = `Automated SMS Failed: ${errorMsg}\n\nSwitching to manual mode...`;
-      if (typeof errorMsg === 'string' && errorMsg.includes("100 INR")) {
-          reason = `Fast2SMS requires a minimum account balance.\n\nOpening your phone's messaging app instead...`;
-      }
-      triggerManualSmsFallback(reason, targetPhone, messageContent);
-    }
+    await sendSmsViaApi(targetPhone, messageContent);
   };
 
-  const triggerManualSmsFallback = (reason: string, phone: string, message: string) => {
-        const confirmFallback = window.confirm(
-            `${reason}\n\nDo you want to open your messaging app to send this reminder?`
-        );
-        if (confirmFallback) {
-            openNativeSms(phone, message);
-        }
-  }
-
-  // Simulates checking for reminders (GLOBAL CHECK for ALL medicines)
   const checkReminders = useCallback(() => {
     if (activeReminder) return; 
 
     const now = new Date();
     const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
-    const currentTime = now.toTimeString().substring(0, 5); // HH:MM
+    const currentTimeStr = now.toTimeString().substring(0, 5); // HH:MM
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    // We check ALL medicines in the system, not just the logged in user's
-    // This allows reminders to trigger even if logged out (if browser is open)
-    // OR if we wanted to support multiple users on same browser.
-    
-    // However, to avoid chaos, let's limit "Popups" to the CURRENT logged in user's context
-    // or if no user is logged in, do nothing (security). 
-    // BUT the requirement implies the app is "running". 
-    // Let's check medicines belonging to CURRENT user if logged in.
-    
-    const medsToCheck = currentUser ? userMedicines : [];
+    const medsToCheck = allMedicines;
 
     for (const med of medsToCheck) {
-      if (med.schedule.day.includes(currentDay) && med.schedule.time === currentTime) {
-        // Check logs from ALL logs to see if this specific med was taken
-        const lastLog = allLogs.find(log => 
+      if (!med.schedule.day.includes(currentDay)) continue;
+
+      const [schedH, schedM] = med.schedule.time.split(':').map(Number);
+      const schedMinutes = schedH * 60 + schedM;
+      const diff = currentMinutes - schedMinutes;
+
+      // Check window: Trigger if within 30 minutes of schedule
+      if (diff >= 0 && diff <= 30) {
+        const takenToday = allLogs.some(log => 
           log.medicineId === med.id && 
-          (now.getTime() - log.timestamp.getTime() < 60000)
+          log.timestamp.toDateString() === now.toDateString() &&
+          log.status === 'taken'
         );
 
-        if (!lastLog) {
+        if (!takenToday) {
            setActiveReminder(med);
-           sendReminderSMS(med, false); 
+           // Only send SMS at the exact minute (or close to it) to avoid spamming 
+           // and rely on lastSmsTime for throttling
+           if (med.schedule.time === currentTimeStr) {
+               sendReminderSMS(med, false); 
+           }
         }
       }
     }
-  }, [allMedicines, allLogs, activeReminder, currentUser, lastSmsTime, userMedicines]); // Updated deps
+  }, [allMedicines, allLogs, activeReminder, lastSmsTime, allUsers]); 
 
   useEffect(() => {
     if (allMedicines.length > 0) {
@@ -347,7 +284,6 @@ const App: React.FC = () => {
 
   const renderActiveReminder = () => {
     if (activeReminder) {
-        // When taking via modal, we must pass the ownerId
         return (
             <ReminderModal 
               medicine={activeReminder} 
@@ -390,6 +326,7 @@ const App: React.FC = () => {
                         return <PatientLoginScreen 
                             onSuccess={handlePatientLogin}
                             onBack={() => setCurrentView(View.LoginChoice)}
+                            registeredUsers={allUsers}
                         />;
                     default:
                         return <LandingScreen onRegisterClick={() => setCurrentView(View.Register)} onLoginClick={() => setCurrentView(View.LoginChoice)} />;
@@ -399,11 +336,9 @@ const App: React.FC = () => {
       );
   }
 
-  // Main App Views (After Login)
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Header onLogout={handleLogout} />
-
       <main className="flex-grow p-4">
         {currentView === View.Caretaker ? (
           <CaretakerView medicines={userMedicines} addMedicine={addMedicine} logs={userLogs} />
@@ -411,7 +346,6 @@ const App: React.FC = () => {
           <PatientView medicines={userMedicines} logs={userLogs} />
         )}
       </main>
-
       {renderActiveReminder()}
     </div>
   );
