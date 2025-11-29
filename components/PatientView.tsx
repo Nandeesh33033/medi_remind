@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Medicine, Log } from '../types';
 import { translations } from '../constants';
@@ -31,6 +32,14 @@ const PatientView: React.FC<PatientViewProps> = ({ medicines, logs }) => {
     return { text: 'Pending', color: 'bg-gray-100 text-gray-800' };
   };
 
+  const formatTime12Hour = (time24: string) => {
+    const [h, m] = time24.split(':');
+    let hour = parseInt(h, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12 || 12;
+    return `${hour}:${m} ${ampm}`;
+  };
+
   return (
     <div className="container mx-auto">
       <h2 className="text-3xl md:text-4xl font-bold mb-6 text-center">{translations.patientTitle}</h2>
@@ -50,7 +59,7 @@ const PatientView: React.FC<PatientViewProps> = ({ medicines, logs }) => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-3xl md:text-4xl font-mono font-bold text-blue-500">{med.schedule.time}</p>
+                  <p className="text-3xl md:text-4xl font-mono font-bold text-blue-500">{formatTime12Hour(med.schedule.time)}</p>
                   <span className={`mt-2 inline-block px-3 py-1 text-sm font-semibold rounded-full ${status.color}`}>
                     {status.text}
                   </span>

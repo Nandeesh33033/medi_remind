@@ -16,36 +16,32 @@ import PatientLoginScreen from './components/PatientLoginScreen';
 const FAST2SMS_API_KEY = 'tJE8T3LG0yQIRDdNgFaKloxeZ9rXqsmiO5bMcY7Sj4hHpCvA2zHLnNZyDTIuS7c1Y4MgJklifRd3ebB9';
 
 const App: React.FC = () => {
-  // --- STATE WITH PERSISTENCE ---
+  // --- STATE WITH PERSISTENCE (V2 Keys to Wipe Old Data) ---
   
   // 1. ALL USERS (Database Simulation)
   const [allUsers, setAllUsers] = useState<RegisteredUser[]>(() => {
-    const saved = localStorage.getItem('allUsers');
+    const saved = localStorage.getItem('users_v2');
     if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.length > 0 && !parsed[0].faceImage) {
-            return [];
-        }
-        return parsed;
+        return JSON.parse(saved);
     }
     return [];
   });
 
   // 2. ACTIVE SESSION
   const [currentUser, setCurrentUser] = useState<RegisteredUser | null>(() => {
-    const saved = localStorage.getItem('currentUser');
+    const saved = localStorage.getItem('currentUser_v2');
     return saved ? JSON.parse(saved) : null;
   });
 
   // 3. ALL MEDICINES
   const [allMedicines, setAllMedicines] = useState<Medicine[]>(() => {
-    const saved = localStorage.getItem('medicines');
+    const saved = localStorage.getItem('medicines_v2');
     return saved ? JSON.parse(saved) : initialMedicines;
   });
 
   // 4. ALL LOGS
   const [allLogs, setAllLogs] = useState<Log[]>(() => {
-     const saved = localStorage.getItem('logs');
+     const saved = localStorage.getItem('logs_v2');
      if (saved) {
         const parsed = JSON.parse(saved);
         return parsed.map((l: any) => ({ ...l, timestamp: new Date(l.timestamp) }));
@@ -60,34 +56,44 @@ const App: React.FC = () => {
   
   // Persist SMS timestamps to avoid duplicate sending on refresh
   const [lastSmsTime, setLastSmsTime] = useState<Record<string, number>>(() => {
-    const saved = localStorage.getItem('lastSmsTime');
+    const saved = localStorage.getItem('lastSmsTime_v2');
     return saved ? JSON.parse(saved) : {};
   });
 
   // --- PERSISTENCE EFFECTS ---
   useEffect(() => {
-    localStorage.setItem('allUsers', JSON.stringify(allUsers));
+    localStorage.setItem('users_v2', JSON.stringify(allUsers));
   }, [allUsers]);
 
   useEffect(() => {
     if (currentUser) {
-        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        localStorage.setItem('currentUser_v2', JSON.stringify(currentUser));
     } else {
-        localStorage.removeItem('currentUser');
+        localStorage.removeItem('currentUser_v2');
     }
   }, [currentUser]);
 
   useEffect(() => {
-    localStorage.setItem('medicines', JSON.stringify(allMedicines));
+    localStorage.setItem('medicines_v2', JSON.stringify(allMedicines));
   }, [allMedicines]);
 
   useEffect(() => {
-    localStorage.setItem('logs', JSON.stringify(allLogs));
+    localStorage.setItem('logs_v2', JSON.stringify(allLogs));
   }, [allLogs]);
 
   useEffect(() => {
-    localStorage.setItem('lastSmsTime', JSON.stringify(lastSmsTime));
+    localStorage.setItem('lastSmsTime_v2', JSON.stringify(lastSmsTime));
   }, [lastSmsTime]);
+
+  // --- HELPER FUNCTIONS ---
+  const formatTime12Hour = (time24: string) => {
+    if (!time24) return '';
+    const [h, m] = time24.split(':');
+    let hour = parseInt(h, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12 || 12;
+    return `${hour}:${m} ${ampm}`;
+  };
 
   // --- DERIVED STATE ---
   const userMedicines = currentUser 
@@ -157,7 +163,7 @@ const App: React.FC = () => {
       if (cPhone) {
         const foodInstruction = activeReminder.beforeFood ? 'BEFORE' : 'AFTER';
         const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
-        const messageContent = `ALERT: Patient MISSED medicine. Name: ${activeReminder.name} (${activeReminder.dosage}mg). Quantity: ${activeReminder.pills} pill(s). Instruction: ${foodInstruction} food. Time: ${activeReminder.schedule.time}. [${timestamp}]`;
+        const messageContent = `ALERT: Patient MISSED medicine. Name: ${activeReminder.name} (${activeReminder.dosage}mg). Quantity: ${activeReminder.pills} pill(s). Instruction: ${foodInstruction} food. Time: ${formatTime12Hour(activeReminder.schedule.time)}. [${timestamp}]`;
         
         await sendSmsViaApi(cPhone, messageContent);
       }
@@ -232,7 +238,7 @@ const App: React.FC = () => {
     
     setLastSmsTime(prev => ({ ...prev, [medicine.id]: now }));
     const foodInstruction = medicine.beforeFood ? 'BEFORE' : 'AFTER';
-    const messageContent = `MediRemind:\nTake ${medicine.pills} pill(s) of\n${medicine.name} (${medicine.dosage}mg)\n${foodInstruction} food.\nTime: ${medicine.schedule.time}.`;
+    const messageContent = `MediRemind:\nTake ${medicine.pills} pill(s) of\n${medicine.name} (${medicine.dosage}mg)\n${foodInstruction} food.\nTime: ${formatTime12Hour(medicine.schedule.time)}.`;
     
     await sendSmsViaApi(targetPhone, messageContent);
   };
@@ -261,8 +267,15 @@ const App: React.FC = () => {
           log.timestamp.toDateString() === now.toDateString() &&
           log.status === 'taken'
         );
+        
+        // Also check if we already marked it as missed to prevent re-alarming
+        const missedToday = allLogs.some(log =>
+            log.medicineId === med.id &&
+            log.timestamp.toDateString() === now.toDateString() &&
+            log.status === 'missed'
+        );
 
-        if (!takenToday) {
+        if (!takenToday && !missedToday) {
            setActiveReminder(med);
            // Only send SMS at the exact minute (or close to it) to avoid spamming 
            // and rely on lastSmsTime for throttling

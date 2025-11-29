@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Medicine, Log } from '../types';
 import MedicineForm from './MedicineForm';
@@ -18,6 +19,14 @@ const CaretakerView: React.FC<CaretakerViewProps> = ({ medicines, addMedicine, l
   const activeBtnClasses = "bg-blue-600 text-white";
   const inactiveBtnClasses = "bg-white text-blue-600 hover:bg-blue-100";
 
+  const formatTime12Hour = (time24: string) => {
+    const [h, m] = time24.split(':');
+    let hour = parseInt(h, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12 || 12;
+    return `${hour}:${m} ${ampm}`;
+  };
+
   const renderSubView = () => {
     switch (activeSubView) {
       case 'SCHEDULE':
@@ -33,7 +42,7 @@ const CaretakerView: React.FC<CaretakerViewProps> = ({ medicines, addMedicine, l
                         <div>
                           <p className="font-bold text-lg">{med.name} <span className="font-normal text-gray-600">({med.dosage}mg)</span></p>
                            <p className="text-sm text-gray-700 font-semibold">{med.pills} Pill(s)</p>
-                          <p className="text-sm text-gray-500">{med.schedule.day.map(d => d.substring(0,3)).join(', ')} at {med.schedule.time}</p>
+                          <p className="text-sm text-gray-500">{med.schedule.day.map(d => d.substring(0,3)).join(', ')} at {formatTime12Hour(med.schedule.time)}</p>
                         </div>
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${med.beforeFood ? 'bg-yellow-200 text-yellow-800' : 'bg-green-200 text-green-800'}`}>
                           {med.beforeFood ? translations.beforeFood : translations.afterFood}
